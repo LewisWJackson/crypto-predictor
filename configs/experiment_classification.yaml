@@ -1,0 +1,82 @@
+# configs/experiment_classification.yaml
+#
+# Experiment: Directional Classification via Combined Trading Loss
+#
+# Key changes from baseline tft_config.yaml:
+# 1. Loss: combined_trading instead of quantile
+#    - w_dir=0.5 (up from 0.4) to emphasize directional accuracy
+#    - Includes dead zone: samples with |target| < 0.0005 get reduced weight
+# 2. output_size: 1 (point prediction, not 7 quantiles)
+# 3. Lower learning rate for more stable directional training
+# 4. Higher dropout to reduce overfitting
+#
+# Goal: Improve directional accuracy from baseline 50% to >55%
+
+# Data (same as baseline)
+data:
+  raw_dir: "data/raw"
+  processed_dir: "data/processed"
+  pair: "btc_usdt"
+  timeframe: "1m"
+
+# Feature engineering (same as baseline)
+features:
+  sma_periods: [20, 50, 200]
+  ema_periods: [9, 21]
+  macd_fast: 12
+  macd_slow: 26
+  macd_signal: 9
+  rsi_period: 14
+  stoch_k_period: 14
+  stoch_d_period: 3
+  bb_period: 20
+  bb_std: 2
+  atr_period: 14
+  volatility_windows: [20, 60]
+  stats_window: 60
+  volume_sma_period: 20
+  mfi_period: 14
+  volume_roc_period: 10
+
+# Dataset (same as baseline)
+dataset:
+  encoder_length: 256
+  decoder_length: 15
+  train_fraction: 0.70
+  val_fraction: 0.15
+  test_fraction: 0.15
+  purge_gap: 500
+  batch_size: 64
+  num_workers: 0
+
+# Model — key change: output_size=1 for point prediction
+model:
+  hidden_size: 64
+  attention_head_size: 4
+  dropout: 0.20            # Slightly higher dropout (was 0.15)
+  hidden_continuous_size: 32
+  output_size: 1            # Point prediction (was 7 for quantiles)
+  learning_rate: 0.0005     # Lower LR for stable directional training (was 0.001)
+
+# Training — same patience settings
+training:
+  max_epochs: 100
+  gradient_clip_val: 1.0
+  early_stopping_patience: 10
+  early_stopping_min_delta: 0.00001
+  reduce_lr_patience: 5
+  checkpoint_top_k: 3
+
+# Loss — key change: combined_trading with directional emphasis + dead zone
+loss:
+  type: "combined_trading"
+  w_mse: 0.25              # Reduced MSE weight (was 0.3)
+  w_dir: 0.50              # Increased directional weight (was 0.4)
+  w_rw: 0.25               # Reduced return-weighted MSE (was 0.3)
+  dead_zone: 0.0005        # Ignore/downweight samples with |target| < this threshold
+
+# Evaluation
+evaluation:
+  min_directional_accuracy: 0.55
+  min_sharpe_ratio: 1.0
+  max_drawdown: 0.15

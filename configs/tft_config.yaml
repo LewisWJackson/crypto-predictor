@@ -1,0 +1,87 @@
+# configs/tft_config.yaml
+
+# Data
+data:
+  raw_dir: "data/raw"
+  processed_dir: "data/processed"
+  pair: "btc_usdt"
+  timeframe: "1m"
+
+# Feature engineering
+features:
+  # SMA periods
+  sma_periods: [20, 50, 200]
+  ema_periods: [9, 21]
+
+  # MACD
+  macd_fast: 12
+  macd_slow: 26
+  macd_signal: 9
+
+  # RSI
+  rsi_period: 14
+
+  # Stochastic
+  stoch_k_period: 14
+  stoch_d_period: 3
+
+  # Bollinger Bands
+  bb_period: 20
+  bb_std: 2
+
+  # ATR
+  atr_period: 14
+
+  # Rolling windows
+  volatility_windows: [20, 60]
+  stats_window: 60
+
+  # Volume
+  volume_sma_period: 20
+  mfi_period: 14
+  volume_roc_period: 10
+
+# Dataset
+dataset:
+  encoder_length: 256
+  decoder_length: 15
+  train_fraction: 0.70
+  val_fraction: 0.15
+  test_fraction: 0.15
+  purge_gap: 500
+  batch_size: 64
+  num_workers: 0
+
+# Model
+model:
+  hidden_size: 64
+  attention_head_size: 4
+  dropout: 0.15
+  hidden_continuous_size: 32
+  output_size: 7
+  learning_rate: 0.001
+
+# Training
+training:
+  max_epochs: 100
+  gradient_clip_val: 1.0
+  early_stopping_patience: 10
+  early_stopping_min_delta: 0.00001
+  reduce_lr_patience: 5
+  checkpoint_top_k: 3
+
+# Loss
+loss:
+  type: "quantile"  # "quantile" or "combined_trading"
+  # Combined trading loss weights (used when type == "combined_trading")
+  w_mse: 0.3
+  w_dir: 0.4
+  w_rw: 0.3
+  # Quantile loss quantiles (used when type == "quantile")
+  quantiles: [0.02, 0.1, 0.25, 0.5, 0.75, 0.9, 0.98]
+
+# Evaluation
+evaluation:
+  min_directional_accuracy: 0.52
+  min_sharpe_ratio: 0.5
+  max_drawdown: 0.20

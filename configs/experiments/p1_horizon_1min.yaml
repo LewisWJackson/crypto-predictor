@@ -1,0 +1,74 @@
+data:
+  pair: btc_usdt
+  processed_dir: data/processed
+  raw_dir: data/raw
+  timeframe: 1m
+dataset:
+  batch_size: 64
+  decoder_length: 1
+  encoder_length: 256
+  num_workers: 0
+  purge_gap: 500
+  test_fraction: 0.15
+  train_fraction: 0.7
+  val_fraction: 0.15
+evaluation:
+  max_drawdown: 0.2
+  min_directional_accuracy: 0.52
+  min_sharpe_ratio: 0.5
+experiment:
+  description: 'Prediction horizon: 1 minutes'
+  name: horizon_1min
+  phase: 1
+  target: log_return_1
+features:
+  atr_period: 14
+  bb_period: 20
+  bb_std: 2
+  ema_periods:
+  - 9
+  - 21
+  macd_fast: 12
+  macd_signal: 9
+  macd_slow: 26
+  mfi_period: 14
+  rsi_period: 14
+  sma_periods:
+  - 20
+  - 50
+  - 200
+  stats_window: 60
+  stoch_d_period: 3
+  stoch_k_period: 14
+  volatility_windows:
+  - 20
+  - 60
+  volume_roc_period: 10
+  volume_sma_period: 20
+loss:
+  quantiles:
+  - 0.02
+  - 0.1
+  - 0.25
+  - 0.5
+  - 0.75
+  - 0.9
+  - 0.98
+  type: quantile
+  w_dir: 0.4
+  w_mse: 0.3
+  w_rw: 0.3
+model:
+  attention_head_size: 4
+  dropout: 0.15
+  hidden_continuous_size: 32
+  hidden_size: 64
+  learning_rate: 0.001
+  output_size: 7
+training:
+  checkpoint_top_k: 3
+  early_stopping_min_delta: 1.0e-05
+  early_stopping_patience: 5
+  gradient_clip_val: 1.0
+  max_epochs: 20
+  reduce_lr_patience: 5

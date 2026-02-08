@@ -1,0 +1,27 @@
+FROM pytorch/pytorch:2.2.0-cuda12.1-cudnn8-runtime
+
+WORKDIR /app
+
+# System deps
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    git curl && \
+    rm -rf /var/lib/apt/lists/*
+
+# Python deps (install first for layer caching)
+COPY requirements.txt .
+RUN pip install --no-cache-dir -r requirements.txt
+RUN pip install --no-cache-dir yfinance pytrends
+
+# Copy project code (no data — downloaded fresh at runtime)
+COPY configs/ configs/
+COPY src/ src/
+COPY scripts/ scripts/
+COPY run_experiments.sh .
+COPY run_discovery.sh .
+RUN chmod +x run_experiments.sh run_discovery.sh
+
+# Create data dirs
+RUN mkdir -p data/raw data/processed data/alternative models/tft results
+
+# Default: run full experiment suite
+CMD ["bash", "run_experiments.sh"]

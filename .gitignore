@@ -1,0 +1,26 @@
+# Data (downloaded fresh on cloud)
+data/
+!data/.gitkeep
+
+# Model checkpoints
+*.ckpt
+checkpoints/
+
+# Training logs
+lightning_logs/
+models/tft/training_logs/
+
+# Generated figures
+figures/
+
+# Python
+__pycache__/
+*.pyc
+*.egg-info/
+.venv/
+
+# Results (generated on cloud)
+results/
+
+# Environment
+.env
