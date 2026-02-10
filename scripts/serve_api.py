@@ -11,8 +11,10 @@ Usage:
 """
 
 import argparse
+import json
 import sys
 import traceback
+from datetime import datetime, timezone
 from pathlib import Path
 
 # Ensure project root is on the path
@@ -23,6 +25,9 @@ import numpy as np
 import torch
 import uvicorn
 from fastapi import FastAPI, HTTPException
+from fastapi.middleware.cors import CORSMiddleware
+from fastapi.staticfiles import StaticFiles
+from pydantic import BaseModel
 from pytorch_forecasting import TemporalFusionTransformer, TimeSeriesDataSet
 
 from src.model import load_config
@@ -41,6 +46,16 @@ from scripts.predict import (
 # Global state
 # ---------------------------------------------------------------------------
 app = FastAPI(title="TFT Crypto Predictor API", version="1.0.0")
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
+WAITLIST_FILE = PROJECT_ROOT / "data" / "waitlist.json"
 
 _model: TemporalFusionTransformer | None = None
 _config: dict | None = None
@@ -74,13 +89,9 @@ def load_model(checkpoint_path: str, config_path: str | None = None):
 def _build_prediction_dataset(prediction_df, encoder_length, decoder_length):
     """Build a TimeSeriesDataSet from a prepared prediction DataFrame."""
     # Ensure target column exists
-    target = TARGET_COLUMN
+    target = "forward_return_15"
     if target not in prediction_df.columns:
-        # Fallback for predict.py's convention
-        if "log_return_15" in prediction_df.columns:
-            target = "log_return_15"
-        else:
-            prediction_df[TARGET_COLUMN] = 0.0
+        prediction_df[target] = 0.0
 
     return TimeSeriesDataSet(
         data=prediction_df,
@@ -165,6 +176,16 @@ def _run_prediction(model, prediction_df, config):
             "p90": float(quantiles[-1, 5]),
             "p98": float(quantiles[-1, 6]),
         }
+        results["quantiles_all_steps"] = [
+            {
+                "p10": float(quantiles[i, 1]),
+                "p25": float(quantiles[i, 2]),
+                "p50": float(quantiles[i, 3]),
+                "p75": float(quantiles[i, 4]),
+                "p90": float(quantiles[i, 5]),
+            }
+            for i in range(quantiles.shape[0])
+        ]
 
     return results
 
@@ -210,6 +231,10 @@ def predict():
         # 4. Run prediction
         with torch.no_grad():
             results = _run_prediction(_model, prediction_df, _config)
+
+        # Include current price/time so frontend can anchor the prediction overlay
+        results["current_price"] = float(raw_df["close"].iloc[-1])
+        results["current_timestamp"] = int(raw_df["timestamp"].iloc[-1])
 
         return results
 
@@ -261,6 +286,46 @@ def metrics():
             status_code=500,
             detail=f"Failed to read metrics: {exc}",
         )
+
+
+# ---------------------------------------------------------------------------
+# Waitlist
+# ---------------------------------------------------------------------------
+
+class WaitlistEntry(BaseModel):
+    name: str
+    email: str
+
+
+@app.post("/api/waitlist")
+def join_waitlist(entry: WaitlistEntry):
+    """Add a user to the early-access waitlist."""
+    entries = []
+    if WAITLIST_FILE.exists():
+        entries = json.loads(WAITLIST_FILE.read_text())
+
+    if any(e["email"] == entry.email for e in entries):
+        return {"status": "already_registered", "message": "You're already on the waitlist!"}
+
+    entries.append({
+        "name": entry.name,
+        "email": entry.email,
+        "timestamp": datetime.now(timezone.utc).isoformat(),
+    })
+
+    WAITLIST_FILE.parent.mkdir(parents=True, exist_ok=True)
+    WAITLIST_FILE.write_text(json.dumps(entries, indent=2))
+
+    return {"status": "success", "message": "You're on the list!", "position": len(entries)}
+
+
+# ---------------------------------------------------------------------------
+# Static frontend (production)
+# ---------------------------------------------------------------------------
+
+_web_dist = PROJECT_ROOT / "web" / "dist"
+if _web_dist.exists():
+    app.mount("/", StaticFiles(directory=str(_web_dist), html=True), name="frontend")
 
 
 # ---------------------------------------------------------------------------

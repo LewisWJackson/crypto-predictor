@@ -98,19 +98,21 @@ def apply_normalization(
 def prepare_for_timeseries(
     df: pd.DataFrame,
     group_name: str = "BTC_USDT",
-    target_col: str = "log_return_15",
+    target_col: str = "forward_return_15",
     source_target_col: str = None,
 ) -> pd.DataFrame:
     """Add required columns for pytorch-forecasting TimeSeriesDataSet.
 
     Adds time_idx (contiguous integer index) and group column.
+    Copies the forward-looking target into a dedicated column that
+    cannot collide with backward-looking input features.
 
     Args:
         df: DataFrame with features and target.
         group_name: Group identifier for the time series.
         target_col: Name of the target column for pytorch-forecasting.
-        source_target_col: Source column to copy into target_col if not
-            already present. Defaults to TARGET_COLUMN for backward compat.
+        source_target_col: Source column to copy into target_col.
+            Defaults to TARGET_COLUMN ("target_log_return_15").
     """
     if source_target_col is None:
         source_target_col = TARGET_COLUMN
@@ -119,9 +121,14 @@ def prepare_for_timeseries(
     df["time_idx"] = np.arange(len(df))
     df["group"] = group_name
 
-    # Rename target for pytorch-forecasting
-    if target_col not in df.columns and source_target_col in df.columns:
+    # Always copy forward-looking target into the dedicated target column
+    if source_target_col in df.columns:
         df[target_col] = df[source_target_col]
+    else:
+        raise ValueError(
+            f"Source target column '{source_target_col}' not found in DataFrame. "
+            f"Available columns: {list(df.columns)}"
+        )
 
     return df
 
@@ -134,7 +141,7 @@ def create_datasets(
     encoder_length: int = 256,
     decoder_length: int = 15,
     group_name: str = "BTC_USDT",
-    target_col: str = "log_return_15",
+    target_col: str = "forward_return_15",
 ) -> Tuple[TimeSeriesDataSet, TimeSeriesDataSet, TimeSeriesDataSet, Dict]:
     """Create train/val/test TimeSeriesDataSets from processed parquet.
 
@@ -146,9 +153,8 @@ def create_datasets(
         encoder_length: Lookback window length.
         decoder_length: Prediction horizon length.
         group_name: Group identifier for the time series.
-        target_col: Name of the target column in the dataset (e.g.,
-            "log_return_15" or "log_return_5"). The source column in the
-            parquet is expected to be "target_{target_col}".
+        target_col: Name of the target column in the dataset. Must not
+            collide with input feature names.
 
     Returns:
         (training_dataset, validation_dataset, test_dataset, norm_stats)
@@ -157,8 +163,14 @@ def create_datasets(
     # Load processed features
     df = pd.read_parquet(processed_path)
 
-    # Determine the source target column name in the parquet
-    source_target_col = f"target_{target_col}"
+    # Map target_col name to the source column in parquet
+    # e.g. "forward_return_15" -> "target_log_return_15"
+    #      "forward_return_5"  -> "target_log_return_5"
+    TARGET_COL_MAP = {
+        "forward_return_15": "target_log_return_15",
+        "forward_return_5": "target_log_return_5",
+    }
+    source_target_col = TARGET_COL_MAP.get(target_col, TARGET_COLUMN)
 
     # Split chronologically
     train_df, val_df, test_df = split_data(df, train_frac, val_frac, purge_gap)
@@ -226,7 +238,7 @@ def build_timeseries_dataset(
     encoder_length: int = 256,
     decoder_length: int = 15,
     group_name: str = "BTC_USDT",
-    target_col: str = "log_return_15",
+    target_col: str = "forward_return_15",
 ) -> TimeSeriesDataSet:
     """Create a single TimeSeriesDataSet for prediction from a prepared DataFrame.
 
@@ -235,13 +247,12 @@ def build_timeseries_dataset(
         encoder_length: Lookback window length.
         decoder_length: Prediction horizon length.
         group_name: Group identifier for the time series.
-        target_col: Target column name (default: "log_return_15").
+        target_col: Target column name.
 
     Returns:
         TimeSeriesDataSet ready for prediction.
     """
-    source_target_col = f"target_{target_col}"
-    df = prepare_for_timeseries(df, group_name, target_col=target_col, source_target_col=source_target_col)
+    df = prepare_for_timeseries(df, group_name, target_col=target_col)
 
     return TimeSeriesDataSet(
         data=df,

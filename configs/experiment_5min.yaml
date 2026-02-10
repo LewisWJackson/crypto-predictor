@@ -47,7 +47,7 @@ features:
 dataset:
   encoder_length: 256
   decoder_length: 5           # Changed from 15 -> 5
-  target_col: "log_return_5"  # Changed from log_return_15 -> log_return_5
+  target_col: "forward_return_5"  # Forward-looking 5-bar return
   train_fraction: 0.70
   val_fraction: 0.15
   test_fraction: 0.15

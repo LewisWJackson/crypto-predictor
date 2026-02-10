@@ -48,14 +48,14 @@ def get_baseline_features(processed_path: str) -> list[str]:
     """Get the list of standard technical indicator features."""
     df = pd.read_parquet(processed_path)
     # Exclude target, timestamp, and group columns
-    exclude = {"timestamp", "log_return_15", "log_return_5", "time_idx", "group"}
+    exclude = {"timestamp", "target_log_return_15", "target_log_return_5", "forward_return_15", "time_idx", "group"}
     return [c for c in df.columns if c not in exclude]
 
 
 def get_alternative_features(enhanced_path: str, baseline_features: list[str]) -> list[str]:
     """Get the list of alternative features (not in baseline)."""
     df = pd.read_parquet(enhanced_path)
-    exclude = {"timestamp", "log_return_15", "log_return_5", "time_idx", "group"}
+    exclude = {"timestamp", "target_log_return_15", "target_log_return_5", "forward_return_15", "time_idx", "group"}
     all_features = [c for c in df.columns if c not in exclude]
     return [f for f in all_features if f not in baseline_features]
 

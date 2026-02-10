@@ -267,7 +267,7 @@ def main():
     if not processed_path.is_absolute():
         processed_path = PROJECT_ROOT / processed_path
 
-    target_col = dataset_cfg.get("target_col", "log_return_15")
+    target_col = dataset_cfg.get("target_col", "forward_return_15")
 
     training_dataset, validation_dataset, test_dataset, norm_stats = create_datasets(
         processed_path=str(processed_path),

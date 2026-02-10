@@ -84,7 +84,7 @@ def main():
     pair = data_cfg.get("pair", "BTC_USDT")
     processed_path = str(processed_dir / f"{pair}_features.parquet")
 
-    target_col = dataset_cfg.get("target_col", "log_return_15")
+    target_col = dataset_cfg.get("target_col", "forward_return_15")
 
     training_dataset, validation_dataset, test_dataset, norm_stats = create_datasets(
         processed_path=processed_path,

@@ -146,8 +146,8 @@ def prepare_prediction_dataframe(
     df["group"] = "BTC_USDT"
 
     # For prediction, we need a target column (can be zeros for future steps)
-    if "log_return_15" not in df.columns:
-        df["log_return_15"] = 0.0
+    if "forward_return_15" not in df.columns:
+        df["forward_return_15"] = 0.0
 
     return df
 

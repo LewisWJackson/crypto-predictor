@@ -24,3 +24,17 @@ results/
 
 # Environment
 .env
+
+# Web
+web/node_modules/
+web/dist/
+
+# OS
+.DS_Store
+
+# Training
+training.log
+models/
+
+# Video assets (large files)
+video-assets/
