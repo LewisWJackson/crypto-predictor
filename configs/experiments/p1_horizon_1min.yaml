@@ -3,11 +3,12 @@ data:
   processed_dir: data/processed
   raw_dir: data/raw
   timeframe: 1m
+  start_date: "2022-01-01"
 dataset:
   batch_size: 64
   decoder_length: 1
   encoder_length: 256
-  num_workers: 0
+  num_workers: 4
   purge_gap: 500
   test_fraction: 0.15
   train_fraction: 0.7

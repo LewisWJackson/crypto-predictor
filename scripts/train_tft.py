@@ -85,6 +85,7 @@ def main():
         decoder_length=dataset_cfg.get("decoder_length", 15),
         group_name=pair,
         target_col=target_col,
+        start_date=data_cfg.get("start_date"),
     )
 
     print(

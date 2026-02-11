@@ -142,6 +142,7 @@ def create_datasets(
     decoder_length: int = 15,
     group_name: str = "BTC_USDT",
     target_col: str = "forward_return_15",
+    start_date: str = None,
 ) -> Tuple[TimeSeriesDataSet, TimeSeriesDataSet, TimeSeriesDataSet, Dict]:
     """Create train/val/test TimeSeriesDataSets from processed parquet.
 
@@ -155,6 +156,8 @@ def create_datasets(
         group_name: Group identifier for the time series.
         target_col: Name of the target column in the dataset. Must not
             collide with input feature names.
+        start_date: Optional start date filter (e.g. "2022-01-01"). Data
+            before this date is discarded before splitting.
 
     Returns:
         (training_dataset, validation_dataset, test_dataset, norm_stats)
@@ -162,6 +165,14 @@ def create_datasets(
     """
     # Load processed features
     df = pd.read_parquet(processed_path)
+
+    # Filter by start_date if provided
+    if start_date:
+        ts = pd.to_datetime(df["timestamp"], unit="ms")
+        mask = ts >= pd.Timestamp(start_date)
+        before = len(df)
+        df = df[mask].reset_index(drop=True)
+        print(f"  Filtered to data from {start_date}: {before:,} → {len(df):,} rows")
 
     # Map target_col name to the source column in parquet
     # e.g. "forward_return_15" -> "target_log_return_15"
