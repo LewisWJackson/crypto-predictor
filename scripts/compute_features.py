@@ -23,7 +23,7 @@ from src.features import compute_all_features, ALL_FEATURES, TARGET_COLUMN
 
 def main():
     parser = argparse.ArgumentParser(description="Compute features from raw OHLCV data")
-    parser.add_argument("--pair", default="BTC_USDT", help="Trading pair (default: BTC_USDT)")
+    parser.add_argument("--pair", default="btc_usdt", help="Trading pair (default: btc_usdt)")
     parser.add_argument("--raw-dir", default="data/raw", help="Raw data directory")
     parser.add_argument("--out-dir", default="data/processed", help="Output directory")
     args = parser.parse_args()
