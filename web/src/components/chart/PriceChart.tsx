@@ -14,6 +14,7 @@ import type { CandleData } from "@/types/chart";
 const ts = (n: number) => n as UTCTimestamp;
 
 const PREDICTION_STEPS = 30; // predict 30 minutes ahead for more visual impact
+const MAX_GHOST_TRAILS = 20; // cap historical ghost predictions to avoid clutter
 
 /**
  * Generate a simulated prediction from recent price action.
@@ -79,6 +80,12 @@ function buildPredictionLine(
   return points;
 }
 
+/** A single ghost trail — a saved historical prediction */
+interface GhostTrail {
+  anchorTime: number;
+  points: { time: number; value: number }[];
+}
+
 export function PriceChart() {
   const containerRef = useRef<HTMLDivElement>(null);
   const chartRef = useRef<IChartApi | null>(null);
@@ -92,6 +99,12 @@ export function PriceChart() {
   // Persistent prediction: stores locked prediction points that stay on chart
   const lockedPointsRef = useRef<{ time: number; value: number }[]>([]);
   const lastPredictionAnchorRef = useRef<number>(0);
+
+  // Ghost prediction trails — historical predictions baked in when anchor changes
+  const ghostTrailsRef = useRef<GhostTrail[]>([]);
+  const ghostSeriesPoolRef = useRef<ISeriesApi<"Line">[]>([]);
+  // Track the live prediction points so we can bake them in when anchor changes
+  const livePredictionPointsRef = useRef<{ time: number; value: number }[]>([]);
 
   const { candles, currentCandle, isConnected } = useBinanceWebSocket();
   const { data: prediction } = usePrediction();
@@ -184,7 +197,22 @@ export function PriceChart() {
       priceLineVisible: false,
     });
 
-    // Prediction line — blue neon
+    // Ghost prediction trails — pool of line series for historical predictions
+    const ghostPool: ISeriesApi<"Line">[] = [];
+    for (let i = 0; i < MAX_GHOST_TRAILS; i++) {
+      const ghostLine = chart.addLineSeries({
+        color: "rgba(0, 212, 255, 0.18)",
+        lineWidth: 1,
+        lineStyle: LineStyle.Dashed,
+        crosshairMarkerVisible: false,
+        lastValueVisible: false,
+        priceLineVisible: false,
+      });
+      ghostPool.push(ghostLine);
+    }
+    ghostSeriesPoolRef.current = ghostPool;
+
+    // Prediction line — blue neon (added after ghosts so it renders on top)
     predLineRef.current = chart.addLineSeries({
       color: "#00d4ff",
       lineWidth: 2,
@@ -244,13 +272,25 @@ export function PriceChart() {
     const anchorPrice = currentCandle.close;
     const anchorTime = currentCandle.time;
 
-    // When a new candle opens (anchor time changes), lock the previous prediction's
-    // first point and trim old locked points that real time has passed
+    // When a new candle opens (anchor time changes), bake the previous prediction
+    // into a ghost trail and lock points
     if (anchorTime !== lastPredictionAnchorRef.current && lastPredictionAnchorRef.current > 0) {
       // Remove any locked points that real candles have now passed
       lockedPointsRef.current = lockedPointsRef.current.filter(
         (p) => p.time > anchorTime
       );
+
+      // Bake the previous live prediction into a ghost trail
+      if (livePredictionPointsRef.current.length > 0) {
+        const ghost: GhostTrail = {
+          anchorTime: lastPredictionAnchorRef.current,
+          points: [...livePredictionPointsRef.current],
+        };
+        ghostTrailsRef.current = [
+          ...ghostTrailsRef.current,
+          ghost,
+        ].slice(-MAX_GHOST_TRAILS); // cap to last N
+      }
     }
     lastPredictionAnchorRef.current = anchorTime;
 
@@ -292,6 +332,23 @@ export function PriceChart() {
     predLineRef.current.setData(
       final.map((p) => ({ time: ts(p.time), value: p.value }))
     );
+
+    // Save live prediction points (including bridge) so they can be baked into ghost trails
+    livePredictionPointsRef.current = [bridge, ...linePoints];
+
+    // Update ghost trail series — each ghost gets its own line series from the pool
+    const ghosts = ghostTrailsRef.current;
+    const pool = ghostSeriesPoolRef.current;
+    for (let i = 0; i < pool.length; i++) {
+      if (i < ghosts.length) {
+        pool[i].setData(
+          ghosts[i].points.map((p) => ({ time: ts(p.time), value: p.value }))
+        );
+      } else {
+        // Clear unused series
+        pool[i].setData([]);
+      }
+    }
 
     // Confidence bands
     if (prediction?.quantiles_all_steps && bandUpperRef.current && bandLowerRef.current) {
@@ -362,6 +419,21 @@ export function PriceChart() {
             <span className="w-1.5 h-1.5 rounded-full bg-accent-cyan animate-pulse ml-1" />
           )}
         </div>
+
+        {ghostTrailsRef.current.length > 0 && (
+          <div className="flex items-center gap-2 bg-bg-primary/80 backdrop-blur-sm rounded-lg px-3 py-1.5 border border-accent-cyan/10">
+            <span
+              className="w-3 h-0.5 rounded-full"
+              style={{
+                backgroundColor: "rgba(0, 212, 255, 0.25)",
+                borderTop: "1px dashed rgba(0, 212, 255, 0.35)",
+              }}
+            />
+            <span className="text-xs" style={{ color: "rgba(0, 212, 255, 0.5)" }}>
+              Past predictions ({ghostTrailsRef.current.length})
+            </span>
+          </div>
+        )}
       </div>
 
       {/* Prediction disclaimer */}
