@@ -70,5 +70,5 @@ training:
   early_stopping_min_delta: 1.0e-05
   early_stopping_patience: 5
   gradient_clip_val: 1.0
-  max_epochs: 20
+  max_epochs: 30
   reduce_lr_patience: 5

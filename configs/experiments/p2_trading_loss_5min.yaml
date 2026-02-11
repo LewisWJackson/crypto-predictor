@@ -5,7 +5,7 @@ data:
   timeframe: 1m
   start_date: "2022-01-01"
 dataset:
-  batch_size: 64
+  batch_size: 512
   decoder_length: 5
   encoder_length: 256
   num_workers: 4
@@ -71,5 +71,5 @@ training:
   early_stopping_min_delta: 1.0e-05
   early_stopping_patience: 5
   gradient_clip_val: 1.0
-  max_epochs: 20
+  max_epochs: 30
   reduce_lr_patience: 5
