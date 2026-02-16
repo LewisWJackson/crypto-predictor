@@ -178,8 +178,9 @@ def create_datasets(
     # e.g. "forward_return_15" -> "target_log_return_15"
     #      "forward_return_5"  -> "target_log_return_5"
     TARGET_COL_MAP = {
-        "forward_return_15": "target_log_return_15",
+        "forward_return_1": "target_log_return_1",
         "forward_return_5": "target_log_return_5",
+        "forward_return_15": "target_log_return_15",
     }
     source_target_col = TARGET_COL_MAP.get(target_col, TARGET_COLUMN)
 

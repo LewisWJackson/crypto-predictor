@@ -259,10 +259,19 @@ def main():
     # ------------------------------------------------------------------
     print("Creating datasets...")
     dataset_cfg = config.get("dataset", {})
-    processed_path = (
-        Path(config.get("data", {}).get("processed_dir", "data/processed"))
-        / f"{config['data']['pair']}_features.parquet"
-    )
+    data_cfg = config.get("data", {})
+    timeframe = data_cfg.get("timeframe", "1m")
+    pair = data_cfg.get("pair", "BTC_USDT")
+    if timeframe == "1m":
+        processed_path = (
+            Path(data_cfg.get("processed_dir", "data/processed"))
+            / f"{pair}_features.parquet"
+        )
+    else:
+        processed_path = (
+            Path(data_cfg.get("processed_dir", "data/processed"))
+            / f"{pair}_{timeframe}_features.parquet"
+        )
     # Make path absolute relative to project root
     if not processed_path.is_absolute():
         processed_path = PROJECT_ROOT / processed_path
@@ -277,6 +286,7 @@ def main():
         encoder_length=dataset_cfg.get("encoder_length", 256),
         decoder_length=dataset_cfg.get("decoder_length", 15),
         target_col=target_col,
+        start_date=data_cfg.get("start_date"),
     )
 
     batch_size = dataset_cfg.get("batch_size", 64) * 2

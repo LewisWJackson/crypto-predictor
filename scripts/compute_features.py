@@ -21,11 +21,40 @@ import pandas as pd
 from src.features import compute_all_features, ALL_FEATURES, TARGET_COLUMN
 
 
+def resample_ohlcv(df: pd.DataFrame, rule: str) -> pd.DataFrame:
+    """Resample 1-minute OHLCV data to a coarser timeframe.
+
+    Args:
+        df: DataFrame with timestamp (ms), open, high, low, close, volume.
+        rule: Pandas resample rule, e.g. '15min', '5min'.
+
+    Returns:
+        Resampled DataFrame with the same columns.
+    """
+    df = df.copy()
+    df["dt"] = pd.to_datetime(df["timestamp"], unit="ms", utc=True)
+    df = df.set_index("dt")
+
+    resampled = df.resample(rule).agg({
+        "timestamp": "first",
+        "open": "first",
+        "high": "max",
+        "low": "min",
+        "close": "last",
+        "volume": "sum",
+    }).dropna(subset=["timestamp"]).reset_index(drop=True)
+
+    resampled["timestamp"] = resampled["timestamp"].astype(np.int64)
+    return resampled
+
+
 def main():
     parser = argparse.ArgumentParser(description="Compute features from raw OHLCV data")
     parser.add_argument("--pair", default="btc_usdt", help="Trading pair (default: btc_usdt)")
     parser.add_argument("--raw-dir", default="data/raw", help="Raw data directory")
     parser.add_argument("--out-dir", default="data/processed", help="Output directory")
+    parser.add_argument("--resample", default=None, help="Resample timeframe (e.g. 15min, 5min)")
+    parser.add_argument("--target-horizons", default=None, help="Comma-separated target horizons (e.g. 1,5,15)")
     args = parser.parse_args()
 
     raw_dir = project_root / args.raw_dir
@@ -44,9 +73,20 @@ def main():
     print(f"  Columns: {list(df.columns)}")
     print(f"  Date range: {df['timestamp'].iloc[0]} to {df['timestamp'].iloc[-1]}")
 
+    # Resample if requested
+    if args.resample:
+        before = len(df)
+        df = resample_ohlcv(df, args.resample)
+        print(f"\n  Resampled to {args.resample}: {before:,} → {len(df):,} rows")
+
+    # Parse target horizons
+    target_horizons = None
+    if args.target_horizons:
+        target_horizons = [int(h) for h in args.target_horizons.split(",")]
+
     # Compute all features
     print("\nComputing all 43 features + target...")
-    df_features = compute_all_features(df, drop_na=True)
+    df_features = compute_all_features(df, drop_na=True, target_horizons=target_horizons)
     print(f"  Processed shape: {df_features.shape}")
     print(f"  Rows dropped (NaN warm-up + target): {len(df) - len(df_features)}")
 
@@ -79,7 +119,8 @@ def main():
     print(stats.to_string())
 
     # Save processed parquet
-    out_file = out_dir / f"{args.pair}_features.parquet"
+    suffix = f"_{args.resample}" if args.resample else ""
+    out_file = out_dir / f"{args.pair}{suffix}_features.parquet"
     df_features.to_parquet(out_file, index=False)
     print(f"\nSaved processed features to {out_file}")
     print(f"  Final shape: {df_features.shape}")

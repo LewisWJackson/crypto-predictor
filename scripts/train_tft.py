@@ -72,7 +72,11 @@ def main():
     data_cfg = config.get("data", {})
     processed_dir = PROJECT_ROOT / data_cfg.get("processed_dir", "data/processed")
     pair = data_cfg.get("pair", "BTC_USDT")
-    processed_path = str(processed_dir / f"{pair}_features.parquet")
+    timeframe = data_cfg.get("timeframe", "1m")
+    if timeframe == "1m":
+        processed_path = str(processed_dir / f"{pair}_features.parquet")
+    else:
+        processed_path = str(processed_dir / f"{pair}_{timeframe}_features.parquet")
 
     target_col = dataset_cfg.get("target_col", "forward_return_15")
 
