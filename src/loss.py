@@ -54,9 +54,13 @@ class CombinedTradingLoss(MultiHorizonMetric):
             Loss tensor, shape (batch_size, decoder_length).
             pytorch-forecasting handles the reduction.
         """
-        # Squeeze trailing singleton dim when output_size=1
-        if y_pred.ndim == 3 and y_pred.size(-1) == 1:
-            y_pred = y_pred.squeeze(-1)
+        # Reduce trailing quantile dim to a point prediction
+        if y_pred.ndim == 3:
+            if y_pred.size(-1) == 1:
+                y_pred = y_pred.squeeze(-1)
+            else:
+                # Take the median quantile (middle index)
+                y_pred = y_pred[..., y_pred.size(-1) // 2]
 
         # MSE component (per-element)
         mse = (target - y_pred) ** 2
