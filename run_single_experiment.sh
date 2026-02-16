@@ -41,16 +41,16 @@ if python scripts/train_tft.py --config "$CONFIG" 2>&1 | tee "$RESULTS_DIR/$EXP_
 
     # Evaluate
     echo "Evaluating..."
-    python scripts/evaluate.py --checkpoint "$BEST_CKPT" --save-report \
+    python scripts/evaluate.py --checkpoint "$BEST_CKPT" --config "$CONFIG" --save-report \
         2>&1 | tee "$RESULTS_DIR/$EXP_NAME/eval.log" || true
 
     # Backtest
     echo "Backtesting..."
-    python scripts/backtest.py --checkpoint "$BEST_CKPT" \
+    python scripts/backtest.py --checkpoint "$BEST_CKPT" --config "$CONFIG" \
         2>&1 | tee "$RESULTS_DIR/$EXP_NAME/backtest.log" || true
 
     cp models/tft/backtest_equity.png "$RESULTS_DIR/$EXP_NAME/equity.png" 2>/dev/null || true
-    rm -f models/tft/tft-*.ckpt
+    cp models/tft/tft-*.ckpt "$RESULTS_DIR/$EXP_NAME/" 2>/dev/null || true
 
     echo "$EXP_NAME,SUCCESS,$(date)" > "$RESULTS_DIR/$EXP_NAME/status.txt"
     echo "DONE: $EXP_NAME at $(date)"
