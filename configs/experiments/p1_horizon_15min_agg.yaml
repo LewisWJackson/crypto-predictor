@@ -56,8 +56,8 @@ loss:
 model:
   attention_head_size: 4
   dropout: 0.15
-  hidden_continuous_size: 64
-  hidden_size: 128
+  hidden_continuous_size: 32
+  hidden_size: 64
   learning_rate: 0.0005
   output_size: 1
 training:
