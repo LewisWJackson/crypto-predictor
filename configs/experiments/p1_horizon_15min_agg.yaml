@@ -49,21 +49,21 @@ features:
   volume_sma_period: 20
 loss:
   type: combined_trading
-  w_mse: 0.3
-  w_dir: 0.4
-  w_rw: 0.3
-  dead_zone: 0.0001
+  w_mse: 0.45
+  w_dir: 0.15
+  w_rw: 0.40
+  dead_zone: 0.001
 model:
   attention_head_size: 4
   dropout: 0.15
-  hidden_continuous_size: 32
-  hidden_size: 64
-  learning_rate: 0.001
+  hidden_continuous_size: 64
+  hidden_size: 128
+  learning_rate: 0.0005
   output_size: 1
 training:
   checkpoint_top_k: 3
   early_stopping_min_delta: 1.0e-05
-  early_stopping_patience: 5
+  early_stopping_patience: 8
   gradient_clip_val: 1.0
-  max_epochs: 30
+  max_epochs: 50
   reduce_lr_patience: 5
