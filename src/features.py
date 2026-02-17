@@ -264,6 +264,28 @@ TARGET_COLUMN = "target_log_return_15"
 TARGET_HORIZONS = [5, 15]
 
 
+def compute_regime_features(
+    df: pd.DataFrame,
+    regime_model_path: str,
+) -> pd.DataFrame:
+    """Add regime_label as a categorical feature from a fitted HMM.
+
+    Args:
+        df: DataFrame with raw features (must include HMM input features).
+        regime_model_path: Path to a fitted RegimeDetector pickle.
+
+    Returns:
+        DataFrame with 'regime_label' column added (int 0-3).
+    """
+    from src.regime import RegimeDetector
+
+    df = df.copy()
+    detector = RegimeDetector.load(regime_model_path)
+    result = detector.predict(df)
+    df["regime_label"] = result.labels.astype(np.int32)
+    return df
+
+
 def compute_all_features(df: pd.DataFrame, drop_na: bool = True, target_horizons: list = None) -> pd.DataFrame:
     """Compute all 43 features and target variable.
 

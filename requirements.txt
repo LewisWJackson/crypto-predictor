@@ -18,6 +18,9 @@ torch>=2.1.0
 pytorch-lightning>=2.1.0
 pytorch-forecasting>=1.0.0
 
+# Regime detection
+hmmlearn>=0.3.0
+
 # Hyperparameter optimization
 optuna>=3.4.0
 

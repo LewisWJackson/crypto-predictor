@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-set -e
+# Do NOT use set -e — we want to continue on individual experiment failures
 
 # Usage: bash run_phase_experiments.sh 1 2     (runs phase 1 and 2 experiments)
 #        bash run_phase_experiments.sh 3        (runs phase 3 only)
@@ -58,16 +58,25 @@ echo ""
 # CSV header
 echo "experiment,phase,val_loss,da_step_final,da_all_steps,sharpe,profit_factor,win_rate,max_drawdown,cumulative_pnl,rmse" > "$SUMMARY_CSV"
 
+# Convert CONFIGS to array to avoid subshell issue with piped while-read
+CONFIG_ARRAY=()
+while IFS= read -r line; do
+    CONFIG_ARRAY+=("$line")
+done <<< "$CONFIGS"
+
 # Run each experiment: train → evaluate → backtest
 CURRENT=0
 FAILED=0
 SUCCEEDED=0
 
-echo "$CONFIGS" | while read CONFIG; do
+for CONFIG in "${CONFIG_ARRAY[@]}"; do
     CURRENT=$((CURRENT + 1))
     EXP_NAME=$(basename "$CONFIG" .yaml)
     EXP_DIR="$RESULTS_DIR/$EXP_NAME"
     mkdir -p "$EXP_DIR"
+
+    # Extract phase number (portable, no -P flag needed)
+    PHASE=$(echo "$EXP_NAME" | sed 's/^p\([0-9]*\).*/\1/')
 
     echo "============================================"
     echo "  [$CURRENT/$TOTAL] $EXP_NAME"
@@ -78,59 +87,79 @@ echo "$CONFIGS" | while read CONFIG; do
     # Clean previous checkpoints
     rm -f models/tft/tft-*.ckpt
 
-    # Train
-    if python scripts/train_tft.py --config "$CONFIG" 2>&1 | tee "$EXP_DIR/train.log"; then
-        BEST_CKPT=$(ls -t models/tft/tft-*.ckpt 2>/dev/null | head -1)
+    # Train (capture exit code, don't let tee mask it)
+    python scripts/train_tft.py --config "$CONFIG" > "$EXP_DIR/train.log" 2>&1
+    TRAIN_EXIT=$?
 
-        if [ -z "$BEST_CKPT" ]; then
-            echo "  WARNING: No checkpoint found"
-            PHASE=$(echo "$EXP_NAME" | grep -oP 'p\K\d+' || echo '?')
-            echo "$EXP_NAME,$PHASE,NO_CKPT,,,,,,,," >> "$SUMMARY_CSV"
-            continue
-        fi
+    # Show last few lines of training output
+    tail -5 "$EXP_DIR/train.log"
 
-        echo "  Best checkpoint: $BEST_CKPT"
-
-        # Evaluate
-        python scripts/evaluate.py --checkpoint "$BEST_CKPT" --save-report \
-            2>&1 | tee "$EXP_DIR/eval.log" || true
-
-        # Backtest
-        python scripts/backtest.py --checkpoint "$BEST_CKPT" \
-            2>&1 | tee "$EXP_DIR/backtest.log" || true
-
-        # Copy artifacts
-        cp models/tft/backtest_equity.png "$EXP_DIR/equity.png" 2>/dev/null || true
-
-        # Extract metrics
-        VAL_LOSS=$(grep -oP 'val_loss[=:]\s*\K[0-9.]+' "$EXP_DIR/train.log" | tail -1 || echo "")
-        DA_FINAL=$(grep -iP 'directional.*step.*(15|final|last)[^0-9]*\K[0-9.]+' "$EXP_DIR/eval.log" | head -1 || echo "")
-        DA_ALL=$(grep -iP 'directional.*all[^0-9]*\K[0-9.]+' "$EXP_DIR/eval.log" | head -1 || echo "")
-        SHARPE=$(grep -iP 'sharpe[^0-9]*\K[-0-9.]+' "$EXP_DIR/eval.log" | head -1 || echo "")
-        PF=$(grep -iP 'profit.factor[^0-9]*\K[0-9.]+' "$EXP_DIR/eval.log" | head -1 || echo "")
-        WR=$(grep -iP 'win.rate[^0-9]*\K[0-9.]+' "$EXP_DIR/eval.log" | head -1 || echo "")
-        MDD=$(grep -iP 'max.draw[^0-9]*\K[-0-9.]+' "$EXP_DIR/eval.log" | head -1 || echo "")
-        PNL=$(grep -iP 'cumulative.*p.l[^0-9]*\K[-0-9.]+' "$EXP_DIR/eval.log" | head -1 || echo "")
-        RMSE=$(grep -iP 'rmse[^0-9]*\K[0-9.]+' "$EXP_DIR/eval.log" | head -1 || echo "")
-
-        PHASE=$(echo "$EXP_NAME" | grep -oP 'p\K\d+' || echo '?')
-        echo "$EXP_NAME,$PHASE,$VAL_LOSS,$DA_FINAL,$DA_ALL,$SHARPE,$PF,$WR,$MDD,$PNL,$RMSE" >> "$SUMMARY_CSV"
-
-        # Clean up checkpoints to save disk
-        rm -f models/tft/tft-*.ckpt
-
-        echo "  SUCCEEDED: $EXP_NAME"
-    else
-        echo "  FAILED: $EXP_NAME"
-        PHASE=$(echo "$EXP_NAME" | grep -oP 'p\K\d+' || echo '?')
+    if [ $TRAIN_EXIT -ne 0 ]; then
+        echo "  FAILED (exit $TRAIN_EXIT): $EXP_NAME"
         echo "$EXP_NAME,$PHASE,FAILED,,,,,,,," >> "$SUMMARY_CSV"
+        FAILED=$((FAILED + 1))
+        echo ""
+        continue
     fi
+
+    BEST_CKPT=$(ls -t models/tft/tft-*.ckpt 2>/dev/null | head -1)
+
+    if [ -z "$BEST_CKPT" ]; then
+        echo "  WARNING: No checkpoint found after training"
+        echo "$EXP_NAME,$PHASE,NO_CKPT,,,,,,,," >> "$SUMMARY_CSV"
+        FAILED=$((FAILED + 1))
+        echo ""
+        continue
+    fi
+
+    echo "  Best checkpoint: $BEST_CKPT"
+
+    # Evaluate
+    python scripts/evaluate.py --checkpoint "$BEST_CKPT" --save-report \
+        > "$EXP_DIR/eval.log" 2>&1 || true
+
+    # Backtest
+    python scripts/backtest.py --checkpoint "$BEST_CKPT" \
+        > "$EXP_DIR/backtest.log" 2>&1 || true
+
+    # Copy artifacts
+    cp models/tft/backtest_equity.png "$EXP_DIR/equity.png" 2>/dev/null || true
+
+    # Extract metrics (use grep -oP if available, fallback to Python)
+    extract_metric() {
+        local pattern="$1"
+        local file="$2"
+        python3 -c "
+import re, sys
+text = open('$file').read()
+m = re.search(r'$pattern', text, re.IGNORECASE)
+print(m.group(1) if m else '')
+" 2>/dev/null || echo ""
+    }
+
+    VAL_LOSS=$(extract_metric 'val_loss[=:]\s*([0-9.]+)' "$EXP_DIR/train.log")
+    DA_FINAL=$(extract_metric 'directional.*(?:step.*(?:15|final|last)|accuracy)[^\d]*(\d+\.\d+)' "$EXP_DIR/eval.log")
+    SHARPE=$(extract_metric 'sharpe[^\d]*([-\d.]+)' "$EXP_DIR/eval.log")
+    PF=$(extract_metric 'profit.factor[^\d]*(\d+\.\d+)' "$EXP_DIR/eval.log")
+    WR=$(extract_metric 'win.rate[^\d]*(\d+\.\d+)' "$EXP_DIR/eval.log")
+    MDD=$(extract_metric 'max.draw[^\d]*([-\d.]+)' "$EXP_DIR/eval.log")
+    PNL=$(extract_metric 'cumulative.*p.l[^\d]*([-\d.]+)' "$EXP_DIR/eval.log")
+    RMSE=$(extract_metric 'rmse[^\d]*(\d+\.\d+)' "$EXP_DIR/eval.log")
+
+    echo "$EXP_NAME,$PHASE,$VAL_LOSS,$DA_FINAL,,$SHARPE,$PF,$WR,$MDD,$PNL,$RMSE" >> "$SUMMARY_CSV"
+
+    # Clean up checkpoints to save disk
+    rm -f models/tft/tft-*.ckpt
+
+    SUCCEEDED=$((SUCCEEDED + 1))
+    echo "  SUCCEEDED: $EXP_NAME ($SUCCEEDED done, $FAILED failed)"
     echo ""
 done
 
 echo ""
 echo "============================================"
 echo "  PHASE EXPERIMENTS COMPLETE"
+echo "  Succeeded: $SUCCEEDED  Failed: $FAILED  Total: $TOTAL"
 echo "  $(date)"
 echo "============================================"
 echo ""

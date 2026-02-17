@@ -25,4 +25,11 @@ export interface PredictionResponse {
     p98: number;
   };
   quantiles_all_steps?: StepQuantiles[];
+  regime?: "accumulation" | "markup" | "distribution" | "markdown";
+  regime_probs?: {
+    accumulation: number;
+    markup: number;
+    distribution: number;
+    markdown: number;
+  };
 }

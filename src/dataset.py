@@ -143,6 +143,7 @@ def create_datasets(
     group_name: str = "BTC_USDT",
     target_col: str = "forward_return_15",
     start_date: str = None,
+    regime_model_path: str = None,
 ) -> Tuple[TimeSeriesDataSet, TimeSeriesDataSet, TimeSeriesDataSet, Dict]:
     """Create train/val/test TimeSeriesDataSets from processed parquet.
 
@@ -158,6 +159,9 @@ def create_datasets(
             collide with input feature names.
         start_date: Optional start date filter (e.g. "2022-01-01"). Data
             before this date is discarded before splitting.
+        regime_model_path: Optional path to a fitted RegimeDetector. When
+            provided, adds 'regime_label' as a time-varying unknown
+            categorical feature to the TimeSeriesDataSet.
 
     Returns:
         (training_dataset, validation_dataset, test_dataset, norm_stats)
@@ -184,6 +188,14 @@ def create_datasets(
     }
     source_target_col = TARGET_COL_MAP.get(target_col, TARGET_COLUMN)
 
+    # Compute regime labels BEFORE splitting if regime model is provided
+    # (uses raw features, must happen before normalization)
+    use_regime = regime_model_path is not None
+    if use_regime:
+        from src.features import compute_regime_features
+        df = compute_regime_features(df, regime_model_path)
+        print(f"  Added regime_label feature (4 categories)")
+
     # Split chronologically
     train_df, val_df, test_df = split_data(df, train_frac, val_frac, purge_gap)
 
@@ -200,6 +212,14 @@ def create_datasets(
     val_df = prepare_for_timeseries(val_df, group_name, target_col=target_col, source_target_col=source_target_col)
     test_df = prepare_for_timeseries(test_df, group_name, target_col=target_col, source_target_col=source_target_col)
 
+    # Ensure regime_label is string type for pytorch-forecasting categoricals
+    if use_regime:
+        for split_df in [train_df, val_df, test_df]:
+            split_df["regime_label"] = split_df["regime_label"].astype(str)
+
+    # Build categorical feature lists
+    time_varying_unknown_cats = ["regime_label"] if use_regime else []
+
     # Create training dataset
     training_dataset = TimeSeriesDataSet(
         data=train_df,
@@ -212,6 +232,7 @@ def create_datasets(
         min_prediction_length=decoder_length,
         time_varying_known_reals=TIME_VARYING_KNOWN_REALS,
         time_varying_unknown_reals=TIME_VARYING_UNKNOWN_REALS,
+        time_varying_unknown_categoricals=time_varying_unknown_cats,
         static_categoricals=["group"],
         target_normalizer=None,  # We pre-normalize ourselves
         add_relative_time_idx=True,
@@ -230,6 +251,7 @@ def create_datasets(
         min_prediction_length=decoder_length,
         time_varying_known_reals=TIME_VARYING_KNOWN_REALS,
         time_varying_unknown_reals=TIME_VARYING_UNKNOWN_REALS,
+        time_varying_unknown_categoricals=time_varying_unknown_cats,
         static_categoricals=["group"],
         target_normalizer=None,
         add_relative_time_idx=True,

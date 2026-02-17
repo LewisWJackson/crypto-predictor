@@ -8,7 +8,7 @@ export async function fetchPrediction(): Promise<PredictionResponse> {
 }
 
 const GOOGLE_SHEET_URL =
-  "https://script.google.com/macros/s/AKfycbwhcnQ8Ly7Ne1X35YEqhpF53POyNUjcPFuUaGtXxds2RwBCskVdOdUUkpmm55iKdFh3Uw/exec";
+  "https://script.google.com/macros/s/AKfycbyX0OGEOldyUoU4LI-HC9W5Qd3IPO9IIBk0xlawHaDAvxFZt_1ZZQZ_0oYHPH7bjoBn9g/exec";
 
 export async function submitWaitlist(name: string, email: string) {
   // POST to Google Sheets via Apps Script

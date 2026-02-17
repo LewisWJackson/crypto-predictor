@@ -1,0 +1,45 @@
+# configs/regime_config.yaml
+# Market regime detection and regime-gated trading strategy configuration.
+
+# HMM settings
+hmm:
+  n_states: 4
+  covariance_type: "full"
+  n_iter: 200
+  min_duration: 30        # Minimum bars before accepting a regime change
+  random_state: 42
+  features:
+    - "log_return_60"
+    - "rolling_volatility_20"
+    - "rolling_volatility_60"
+    - "volume_sma_ratio"
+
+# Per-regime strategy parameters
+strategy:
+  accumulation:
+    position_size: 0.5     # Selective — false breakouts common
+    threshold_bps: 2.0     # Require 2 bps predicted return to enter
+    stop_loss: 0.003       # 0.3%
+    take_profit: 0.005     # 0.5%
+    direction_bias: "long_only"
+
+  markup:
+    position_size: 1.5     # Aggressive — trend is your friend
+    threshold_bps: 0.0     # Enter on any positive signal
+    stop_loss: 0.008       # 0.8%
+    take_profit: 0.015     # 1.5%
+    direction_bias: "long_only"
+
+  distribution:
+    position_size: 0.25    # Defensive — protect capital
+    threshold_bps: 5.0     # Only take high-conviction trades
+    stop_loss: 0.002       # 0.2%
+    take_profit: 0.003     # 0.3%
+    direction_bias: "both"
+
+  markdown:
+    position_size: 0.0     # Flat — best trade is no trade
+    threshold_bps: 0.0
+    stop_loss: 0.0
+    take_profit: 0.0
+    direction_bias: "long_only"

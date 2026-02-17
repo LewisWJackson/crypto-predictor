@@ -16,6 +16,13 @@ const ts = (n: number) => n as UTCTimestamp;
 const PREDICTION_STEPS = 30; // predict 30 minutes ahead for more visual impact
 const MAX_GHOST_TRAILS = 20; // cap historical ghost predictions to avoid clutter
 
+const REGIME_DISPLAY: Record<string, { label: string; color: string; bg: string }> = {
+  accumulation: { label: "Accumulation", color: "#60a5fa", bg: "rgba(96, 165, 250, 0.15)" },
+  markup:       { label: "Markup",       color: "#4ade80", bg: "rgba(74, 222, 128, 0.15)" },
+  distribution: { label: "Distribution", color: "#fb923c", bg: "rgba(251, 146, 60, 0.15)" },
+  markdown:     { label: "Markdown",     color: "#f87171", bg: "rgba(248, 113, 113, 0.15)" },
+};
+
 /**
  * Generate a simulated prediction from recent price action.
  * Each step has its own distinct movement to avoid a straight line.
@@ -201,7 +208,7 @@ export function PriceChart() {
     const ghostPool: ISeriesApi<"Line">[] = [];
     for (let i = 0; i < MAX_GHOST_TRAILS; i++) {
       const ghostLine = chart.addLineSeries({
-        color: "rgba(0, 212, 255, 0.18)",
+        color: "rgba(255, 200, 50, 0.45)",
         lineWidth: 1,
         lineStyle: LineStyle.Dashed,
         crosshairMarkerVisible: false,
@@ -421,17 +428,40 @@ export function PriceChart() {
         </div>
 
         {ghostTrailsRef.current.length > 0 && (
-          <div className="flex items-center gap-2 bg-bg-primary/80 backdrop-blur-sm rounded-lg px-3 py-1.5 border border-accent-cyan/10">
+          <div className="flex items-center gap-2 bg-bg-primary/80 backdrop-blur-sm rounded-lg px-3 py-1.5 border border-yellow-500/20">
             <span
               className="w-3 h-0.5 rounded-full"
               style={{
-                backgroundColor: "rgba(0, 212, 255, 0.25)",
-                borderTop: "1px dashed rgba(0, 212, 255, 0.35)",
+                backgroundColor: "rgba(255, 200, 50, 0.5)",
+                borderTop: "1px dashed rgba(255, 200, 50, 0.6)",
               }}
             />
-            <span className="text-xs" style={{ color: "rgba(0, 212, 255, 0.5)" }}>
+            <span className="text-xs" style={{ color: "rgba(255, 200, 50, 0.7)" }}>
               Past predictions ({ghostTrailsRef.current.length})
             </span>
+          </div>
+        )}
+
+        {prediction?.regime && REGIME_DISPLAY[prediction.regime] && (
+          <div
+            className="flex items-center gap-2 bg-bg-primary/80 backdrop-blur-sm rounded-lg px-3 py-1.5"
+            style={{ border: `1px solid ${REGIME_DISPLAY[prediction.regime].color}33` }}
+          >
+            <span
+              className="w-2 h-2 rounded-full"
+              style={{
+                backgroundColor: REGIME_DISPLAY[prediction.regime].color,
+                boxShadow: `0 0 6px ${REGIME_DISPLAY[prediction.regime].color}`,
+              }}
+            />
+            <span className="text-xs font-medium" style={{ color: REGIME_DISPLAY[prediction.regime].color }}>
+              {REGIME_DISPLAY[prediction.regime].label}
+            </span>
+            {prediction.regime_probs && (
+              <span className="text-[10px] text-text-secondary ml-0.5">
+                {Math.round(prediction.regime_probs[prediction.regime] * 100)}%
+              </span>
+            )}
           </div>
         )}
       </div>
