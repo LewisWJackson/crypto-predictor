@@ -59,14 +59,51 @@ DEFAULT_REGIME_CONFIGS: Dict[str, RegimeConfig] = {
 
 REGIME_NAMES = ["accumulation", "markup", "distribution", "markdown"]
 
+# Transition strategy configs — these override during transition states
+DEFAULT_TRANSITION_CONFIGS: Dict[str, RegimeConfig] = {
+    "accumulation_to_markup": RegimeConfig(
+        position_size=2.0,       # Most aggressive — catching the breakout
+        threshold_bps=0.0,       # Enter on any positive signal
+        stop_loss=0.005,         # 0.5% — tight but room for volatility
+        take_profit=0.02,        # 2.0% — let the breakout run
+        direction_bias="long_only",
+    ),
+    "markup_to_distribution": RegimeConfig(
+        position_size=0.5,       # Scale down — protect gains
+        threshold_bps=3.0,       # Require conviction to enter new trades
+        stop_loss=0.003,         # 0.3% — tighten stops
+        take_profit=0.005,       # 0.5% — take profits quickly
+        direction_bias="long_only",
+    ),
+    "distribution_to_markdown": RegimeConfig(
+        position_size=0.0,       # Exit everything — breakdown imminent
+        threshold_bps=0.0,
+        stop_loss=0.0,
+        take_profit=0.0,
+        direction_bias="long_only",
+    ),
+    "markdown_to_accumulation": RegimeConfig(
+        position_size=0.3,       # Small positions — bottoming but not confirmed
+        threshold_bps=3.0,       # Require conviction
+        stop_loss=0.004,         # 0.4%
+        take_profit=0.008,       # 0.8%
+        direction_bias="long_only",
+    ),
+}
+
+# All config names (steady + transition)
+ALL_CONFIG_NAMES = REGIME_NAMES + list(DEFAULT_TRANSITION_CONFIGS.keys())
+
 
 def load_regime_configs(config_path: str | Path) -> Dict[str, RegimeConfig]:
-    """Load regime strategy configs from a YAML file."""
+    """Load regime + transition strategy configs from a YAML file."""
     with open(config_path) as f:
         raw = yaml.safe_load(f)
 
     strategy = raw.get("strategy", {})
     configs = {}
+
+    # Load steady-state configs
     for name in REGIME_NAMES:
         if name in strategy:
             s = strategy[name]
@@ -79,7 +116,43 @@ def load_regime_configs(config_path: str | Path) -> Dict[str, RegimeConfig]:
             )
         else:
             configs[name] = DEFAULT_REGIME_CONFIGS[name]
+
+    # Load transition configs
+    for name, default in DEFAULT_TRANSITION_CONFIGS.items():
+        if name in strategy:
+            s = strategy[name]
+            configs[name] = RegimeConfig(
+                position_size=s.get("position_size", default.position_size),
+                threshold_bps=s.get("threshold_bps", default.threshold_bps),
+                stop_loss=s.get("stop_loss", default.stop_loss),
+                take_profit=s.get("take_profit", default.take_profit),
+                direction_bias=s.get("direction_bias", default.direction_bias),
+            )
+        else:
+            configs[name] = default
+
     return configs
+
+
+def get_effective_config(
+    state_name: str,
+    configs: Dict[str, RegimeConfig] | None = None,
+) -> RegimeConfig:
+    """Get the strategy config for a given state (steady or transition).
+
+    Args:
+        state_name: Regime or transition name (e.g. "markup" or "accumulation_to_markup").
+        configs: Full config dict. Uses defaults if None.
+
+    Returns:
+        The RegimeConfig for this state.
+    """
+    if configs is None:
+        all_configs = {**DEFAULT_REGIME_CONFIGS, **DEFAULT_TRANSITION_CONFIGS}
+    else:
+        all_configs = configs
+
+    return all_configs.get(state_name, DEFAULT_REGIME_CONFIGS.get("accumulation"))
 
 
 def apply_regime_strategy(

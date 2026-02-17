@@ -1,5 +1,5 @@
 # configs/regime_config.yaml
-# Market regime detection and regime-gated trading strategy configuration.
+# Market regime detection, transition tracking, and strategy configuration.
 
 # HMM settings
 hmm:
@@ -14,7 +14,14 @@ hmm:
     - "rolling_volatility_60"
     - "volume_sma_ratio"
 
-# Per-regime strategy parameters
+# Conviction tracker settings
+tracker:
+  window_size: 20                  # Rolling window of recent evaluations
+  conviction_threshold: 0.55       # Below this, regime is "uncertain"
+  decay_rate_threshold: 0.02       # Conviction drop/step to trigger transition
+  successor_rise_threshold: 0.05   # Min successor prob increase to confirm
+
+# Per-regime strategy parameters (steady-state)
 strategy:
   accumulation:
     position_size: 0.5     # Selective — false breakouts common
@@ -42,4 +49,33 @@ strategy:
     threshold_bps: 0.0
     stop_loss: 0.0
     take_profit: 0.0
+    direction_bias: "long_only"
+
+  # Transition strategies — override during phase transitions
+  accumulation_to_markup:
+    position_size: 2.0     # Most aggressive — catching the breakout
+    threshold_bps: 0.0     # Enter on any positive signal
+    stop_loss: 0.005       # 0.5%
+    take_profit: 0.020     # 2.0% — let breakout run
+    direction_bias: "long_only"
+
+  markup_to_distribution:
+    position_size: 0.5     # Scale down — protect gains
+    threshold_bps: 3.0     # Require conviction
+    stop_loss: 0.003       # 0.3% — tighten stops
+    take_profit: 0.005     # 0.5% — take profits quickly
+    direction_bias: "long_only"
+
+  distribution_to_markdown:
+    position_size: 0.0     # Exit everything — breakdown imminent
+    threshold_bps: 0.0
+    stop_loss: 0.0
+    take_profit: 0.0
+    direction_bias: "long_only"
+
+  markdown_to_accumulation:
+    position_size: 0.3     # Small positions — bottoming not confirmed
+    threshold_bps: 3.0     # Require conviction
+    stop_loss: 0.004       # 0.4%
+    take_profit: 0.008     # 0.8%
     direction_bias: "long_only"

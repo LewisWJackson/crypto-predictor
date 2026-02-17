@@ -25,7 +25,14 @@ export interface PredictionResponse {
     p98: number;
   };
   quantiles_all_steps?: StepQuantiles[];
-  regime?: "accumulation" | "markup" | "distribution" | "markdown";
+  regime?: string;
+  regime_state?: string;
+  regime_is_transition?: boolean;
+  regime_conviction?: number;
+  regime_conviction_trend?: number;
+  regime_transition_from?: string;
+  regime_transition_to?: string;
+  regime_successor_prob?: number;
   regime_probs?: {
     accumulation: number;
     markup: number;

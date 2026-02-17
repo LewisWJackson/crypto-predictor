@@ -7,12 +7,22 @@ Identifies 4 market regimes inspired by Wyckoff market cycle theory:
 - Distribution: Low volatility, neutral-negative returns (topping)
 - Markdown: Negative returns, high volatility (bear trend)
 
+Plus 4 transition states between adjacent Wyckoff phases:
+- accumulation_to_markup: Breakout — highest alpha opportunity
+- markup_to_distribution: Topping — scale out, tighten stops
+- distribution_to_markdown: Breakdown — exit immediately
+- markdown_to_accumulation: Bottoming — start building positions
+
 Uses a 4-state Gaussian HMM fitted on raw (pre-normalization) features:
 log_return_60, rolling_volatility_20, rolling_volatility_60, volume_sma_ratio.
+
+The RegimeTracker maintains state across prediction cycles to detect
+conviction decay and trigger transition states.
 """
 
 import pickle
-from dataclasses import dataclass
+from collections import deque
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Tuple
 
@@ -29,8 +39,32 @@ HMM_FEATURES = [
     "volume_sma_ratio",
 ]
 
-# Wyckoff phase labels
+# Wyckoff phase labels (steady-state)
 REGIME_NAMES = ["accumulation", "markup", "distribution", "markdown"]
+
+# Valid Wyckoff cycle transitions (from -> to)
+VALID_TRANSITIONS = {
+    0: 1,  # accumulation -> markup
+    1: 2,  # markup -> distribution
+    2: 3,  # distribution -> markdown
+    3: 0,  # markdown -> accumulation
+}
+
+# Transition labels
+TRANSITION_NAMES = {
+    (0, 1): "accumulation_to_markup",
+    (1, 2): "markup_to_distribution",
+    (2, 3): "distribution_to_markdown",
+    (3, 0): "markdown_to_accumulation",
+}
+
+# All possible state names (4 steady + 4 transitions)
+ALL_STATE_NAMES = REGIME_NAMES + [
+    "accumulation_to_markup",
+    "markup_to_distribution",
+    "distribution_to_markdown",
+    "markdown_to_accumulation",
+]
 
 
 @dataclass
@@ -270,3 +304,190 @@ class RegimeDetector:
         detector._state_map = state["state_map"]
         detector._fitted = state["fitted"]
         return detector
+
+
+@dataclass
+class TrackerState:
+    """Output from the RegimeTracker including transition detection."""
+
+    regime: str                 # Current steady-state regime name
+    regime_idx: int             # Current steady-state regime index (0-3)
+    state: str                  # Effective state (regime OR transition name)
+    is_transition: bool         # True if in a transition state
+    transition_from: str | None # Source regime if transitioning
+    transition_to: str | None   # Target regime if transitioning
+    conviction: float           # Current regime conviction (0-1)
+    conviction_trend: float     # Rate of conviction change (negative = decaying)
+    probs: dict                 # Full regime probability dict
+    successor_prob: float       # Probability of the valid Wyckoff successor
+
+
+class RegimeTracker:
+    """Stateful regime tracker that detects transitions via conviction decay.
+
+    Maintains a rolling window of regime probabilities across prediction
+    cycles. Detects when the current regime's conviction is weakening and
+    a valid Wyckoff successor is strengthening, signaling a transition.
+
+    Args:
+        detector: A fitted RegimeDetector.
+        window_size: Number of recent evaluations to track.
+        conviction_threshold: Below this, the regime is "uncertain".
+        decay_rate_threshold: Conviction drop per step that triggers transition.
+        successor_rise_threshold: Minimum successor prob increase to confirm transition.
+    """
+
+    def __init__(
+        self,
+        detector: RegimeDetector,
+        window_size: int = 20,
+        conviction_threshold: float = 0.55,
+        decay_rate_threshold: float = 0.02,
+        successor_rise_threshold: float = 0.05,
+    ):
+        self.detector = detector
+        self.window_size = window_size
+        self.conviction_threshold = conviction_threshold
+        self.decay_rate_threshold = decay_rate_threshold
+        self.successor_rise_threshold = successor_rise_threshold
+
+        # Rolling history of regime probabilities
+        self._prob_history: deque = deque(maxlen=window_size)
+        # The regime we currently believe we're in
+        self._believed_regime: int | None = None
+        # How many consecutive evaluations we've been in this regime
+        self._regime_tenure: int = 0
+
+    def reset(self):
+        """Reset tracker state (e.g. on reconnect or data gap)."""
+        self._prob_history.clear()
+        self._believed_regime = None
+        self._regime_tenure = 0
+
+    def update(self, df: pd.DataFrame) -> TrackerState:
+        """Run one evaluation cycle: detect regime and check for transitions.
+
+        Args:
+            df: DataFrame with at least the last row containing current features.
+                Pass the full feature_df from the prediction pipeline.
+
+        Returns:
+            TrackerState with current regime, transition info, and conviction.
+        """
+        # Get fresh probabilities from HMM
+        result = self.detector.predict(df.tail(1))
+        current_probs = result.probabilities[0]  # (4,)
+        current_label = int(result.labels[0])
+
+        # Store in history
+        self._prob_history.append(current_probs.copy())
+
+        # Build probability dict
+        probs_dict = {
+            name: float(current_probs[i])
+            for i, name in enumerate(REGIME_NAMES)
+        }
+
+        # Current conviction = probability of the dominant regime
+        conviction = float(current_probs[current_label])
+
+        # Initialize believed regime if first call
+        if self._believed_regime is None:
+            self._believed_regime = current_label
+            self._regime_tenure = 1
+        elif current_label == self._believed_regime:
+            self._regime_tenure += 1
+        else:
+            # HMM says different regime — but don't flip immediately
+            # Check if conviction supports the change
+            if conviction > self.conviction_threshold and self._regime_tenure < 3:
+                # Very early in previous regime and new one is strong — accept flip
+                self._believed_regime = current_label
+                self._regime_tenure = 1
+            elif conviction > 0.7:
+                # Overwhelming evidence — accept regime change
+                self._believed_regime = current_label
+                self._regime_tenure = 1
+
+        # Compute conviction trend (slope of believed regime's prob over window)
+        conviction_trend = self._compute_conviction_trend()
+
+        # Check for transition state
+        believed = self._believed_regime
+        believed_conviction = float(current_probs[believed])
+        successor_idx = VALID_TRANSITIONS.get(believed)
+        successor_prob = float(current_probs[successor_idx]) if successor_idx is not None else 0.0
+
+        is_transition = False
+        transition_from = None
+        transition_to = None
+        effective_state = REGIME_NAMES[believed]
+
+        if successor_idx is not None and len(self._prob_history) >= 3:
+            # Transition triggers when:
+            # 1. Believed regime conviction is decaying
+            # 2. AND drops below threshold
+            # 3. AND valid successor is rising
+            conviction_decaying = conviction_trend < -self.decay_rate_threshold
+            conviction_weak = believed_conviction < self.conviction_threshold
+            successor_rising = self._is_rising(successor_idx)
+
+            if conviction_weak and (conviction_decaying or successor_rising):
+                is_transition = True
+                transition_from = REGIME_NAMES[believed]
+                transition_to = REGIME_NAMES[successor_idx]
+                effective_state = TRANSITION_NAMES.get(
+                    (believed, successor_idx),
+                    f"{transition_from}_to_{transition_to}"
+                )
+
+            # If successor has overtaken believed regime, complete the transition
+            if successor_prob > believed_conviction and successor_prob > self.conviction_threshold:
+                self._believed_regime = successor_idx
+                self._regime_tenure = 1
+                is_transition = False
+                effective_state = REGIME_NAMES[successor_idx]
+
+        return TrackerState(
+            regime=REGIME_NAMES[believed],
+            regime_idx=believed,
+            state=effective_state,
+            is_transition=is_transition,
+            transition_from=transition_from,
+            transition_to=transition_to,
+            conviction=believed_conviction,
+            conviction_trend=conviction_trend,
+            probs=probs_dict,
+            successor_prob=successor_prob,
+        )
+
+    def _compute_conviction_trend(self) -> float:
+        """Compute the slope of the believed regime's probability over the window."""
+        if len(self._prob_history) < 3 or self._believed_regime is None:
+            return 0.0
+
+        believed = self._believed_regime
+        recent = [p[believed] for p in self._prob_history]
+
+        # Simple linear regression slope
+        n = len(recent)
+        x = np.arange(n, dtype=float)
+        y = np.array(recent, dtype=float)
+        x_mean = x.mean()
+        y_mean = y.mean()
+        slope = float(np.sum((x - x_mean) * (y - y_mean)) / (np.sum((x - x_mean) ** 2) + 1e-8))
+
+        return slope
+
+    def _is_rising(self, regime_idx: int) -> bool:
+        """Check if a regime's probability is trending upward."""
+        if len(self._prob_history) < 3:
+            return False
+
+        recent = [p[regime_idx] for p in self._prob_history]
+        # Compare last third to first third
+        third = max(1, len(recent) // 3)
+        early_avg = np.mean(recent[:third])
+        late_avg = np.mean(recent[-third:])
+
+        return (late_avg - early_avg) > self.successor_rise_threshold

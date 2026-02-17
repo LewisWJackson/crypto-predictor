@@ -36,7 +36,7 @@ from src.features import (
     TIME_VARYING_KNOWN_REALS,
     TIME_VARYING_UNKNOWN_REALS,
 )
-from src.regime import RegimeDetector, REGIME_NAMES
+from src.regime import RegimeDetector, RegimeTracker, REGIME_NAMES, ALL_STATE_NAMES
 from scripts.predict import (
     compute_prediction_features,
     fetch_live_data,
@@ -62,6 +62,7 @@ _model: TemporalFusionTransformer | None = None
 _config: dict | None = None
 _checkpoint_path: str | None = None
 _regime_detector: RegimeDetector | None = None
+_regime_tracker: RegimeTracker | None = None
 
 
 # ---------------------------------------------------------------------------
@@ -70,7 +71,7 @@ _regime_detector: RegimeDetector | None = None
 
 def load_model(checkpoint_path: str, config_path: str | None = None):
     """Load model and config into global state."""
-    global _model, _config, _checkpoint_path, _regime_detector
+    global _model, _config, _checkpoint_path, _regime_detector, _regime_tracker
 
     if config_path is None:
         config_path = str(PROJECT_ROOT / "configs" / "tft_config.yaml")
@@ -83,11 +84,12 @@ def load_model(checkpoint_path: str, config_path: str | None = None):
     param_count = sum(p.numel() for p in _model.parameters())
     print(f"Model loaded from {checkpoint_path} ({param_count:,} parameters)")
 
-    # Load regime detector if available
+    # Load regime detector + tracker if available
     regime_path = PROJECT_ROOT / "models" / "regime" / "hmm_4state.pkl"
     if regime_path.exists():
         _regime_detector = RegimeDetector.load(regime_path)
-        print(f"Regime detector loaded from {regime_path}")
+        _regime_tracker = RegimeTracker(_regime_detector)
+        print(f"Regime detector + tracker loaded from {regime_path}")
     else:
         print(f"No regime model found at {regime_path} — regime detection disabled")
 
@@ -250,15 +252,19 @@ def predict():
         results["current_price"] = float(raw_df["close"].iloc[-1])
         results["current_timestamp"] = int(raw_df["timestamp"].iloc[-1])
 
-        # Add regime detection if available
-        if _regime_detector is not None:
-            regime_result = _regime_detector.predict(feature_df.tail(1))
-            regime_idx = int(regime_result.labels[0])
-            results["regime"] = REGIME_NAMES[regime_idx]
-            results["regime_probs"] = {
-                name: float(regime_result.probabilities[0, i])
-                for i, name in enumerate(REGIME_NAMES)
-            }
+        # Add regime detection with conviction tracking
+        if _regime_tracker is not None:
+            tracker_state = _regime_tracker.update(feature_df)
+            results["regime"] = tracker_state.regime
+            results["regime_state"] = tracker_state.state
+            results["regime_is_transition"] = tracker_state.is_transition
+            results["regime_conviction"] = tracker_state.conviction
+            results["regime_conviction_trend"] = tracker_state.conviction_trend
+            results["regime_probs"] = tracker_state.probs
+            if tracker_state.is_transition:
+                results["regime_transition_from"] = tracker_state.transition_from
+                results["regime_transition_to"] = tracker_state.transition_to
+                results["regime_successor_prob"] = tracker_state.successor_prob
 
         return results
 

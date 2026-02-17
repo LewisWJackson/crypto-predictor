@@ -21,6 +21,11 @@ const REGIME_DISPLAY: Record<string, { label: string; color: string; bg: string 
   markup:       { label: "Markup",       color: "#4ade80", bg: "rgba(74, 222, 128, 0.15)" },
   distribution: { label: "Distribution", color: "#fb923c", bg: "rgba(251, 146, 60, 0.15)" },
   markdown:     { label: "Markdown",     color: "#f87171", bg: "rgba(248, 113, 113, 0.15)" },
+  // Transitions
+  accumulation_to_markup:       { label: "Breakout",    color: "#34d399", bg: "rgba(52, 211, 153, 0.15)" },
+  markup_to_distribution:       { label: "Topping",     color: "#fbbf24", bg: "rgba(251, 191, 36, 0.15)" },
+  distribution_to_markdown:     { label: "Breakdown",   color: "#ef4444", bg: "rgba(239, 68, 68, 0.15)" },
+  markdown_to_accumulation:     { label: "Bottoming",   color: "#818cf8", bg: "rgba(129, 140, 248, 0.15)" },
 };
 
 /**
@@ -442,28 +447,49 @@ export function PriceChart() {
           </div>
         )}
 
-        {prediction?.regime && REGIME_DISPLAY[prediction.regime] && (
-          <div
-            className="flex items-center gap-2 bg-bg-primary/80 backdrop-blur-sm rounded-lg px-3 py-1.5"
-            style={{ border: `1px solid ${REGIME_DISPLAY[prediction.regime].color}33` }}
-          >
-            <span
-              className="w-2 h-2 rounded-full"
-              style={{
-                backgroundColor: REGIME_DISPLAY[prediction.regime].color,
-                boxShadow: `0 0 6px ${REGIME_DISPLAY[prediction.regime].color}`,
-              }}
-            />
-            <span className="text-xs font-medium" style={{ color: REGIME_DISPLAY[prediction.regime].color }}>
-              {REGIME_DISPLAY[prediction.regime].label}
-            </span>
-            {prediction.regime_probs && (
-              <span className="text-[10px] text-text-secondary ml-0.5">
-                {Math.round(prediction.regime_probs[prediction.regime] * 100)}%
-              </span>
-            )}
-          </div>
-        )}
+        {prediction?.regime_state && (() => {
+          const stateKey = prediction.regime_state!;
+          const display = REGIME_DISPLAY[stateKey] || REGIME_DISPLAY[prediction.regime!];
+          if (!display) return null;
+          const isTransition = prediction.regime_is_transition;
+          const conviction = prediction.regime_conviction;
+
+          return (
+            <div
+              className="flex flex-col gap-1 bg-bg-primary/80 backdrop-blur-sm rounded-lg px-3 py-1.5"
+              style={{ border: `1px solid ${display.color}33` }}
+            >
+              <div className="flex items-center gap-2">
+                <span
+                  className={`w-2 h-2 rounded-full ${isTransition ? "animate-pulse" : ""}`}
+                  style={{
+                    backgroundColor: display.color,
+                    boxShadow: `0 0 ${isTransition ? 10 : 6}px ${display.color}`,
+                  }}
+                />
+                <span className="text-xs font-medium" style={{ color: display.color }}>
+                  {isTransition ? `${display.label}` : display.label}
+                </span>
+                {conviction != null && (
+                  <span className="text-[10px] text-text-secondary ml-0.5">
+                    {Math.round(conviction * 100)}%
+                  </span>
+                )}
+              </div>
+              {isTransition && prediction.regime_transition_from && prediction.regime_transition_to && (
+                <div className="flex items-center gap-1 ml-4">
+                  <span className="text-[10px]" style={{ color: REGIME_DISPLAY[prediction.regime_transition_from]?.color || "#888" }}>
+                    {prediction.regime_transition_from}
+                  </span>
+                  <span className="text-[10px] text-text-secondary">→</span>
+                  <span className="text-[10px]" style={{ color: REGIME_DISPLAY[prediction.regime_transition_to]?.color || "#888" }}>
+                    {prediction.regime_transition_to}
+                  </span>
+                </div>
+              )}
+            </div>
+          );
+        })()}
       </div>
 
       {/* Prediction disclaimer */}
