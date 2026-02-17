@@ -96,10 +96,9 @@ def load_model(checkpoint_path: str, config_path: str | None = None):
 # Prediction logic (self-contained to avoid predict.py's broken import)
 # ---------------------------------------------------------------------------
 
-def _build_prediction_dataset(prediction_df, encoder_length, decoder_length):
+def _build_prediction_dataset(prediction_df, encoder_length, decoder_length, target="forward_return_15"):
     """Build a TimeSeriesDataSet from a prepared prediction DataFrame."""
     # Ensure target column exists
-    target = "forward_return_15"
     if target not in prediction_df.columns:
         prediction_df[target] = 0.0
 
@@ -128,8 +127,9 @@ def _run_prediction(model, prediction_df, config):
     encoder_length = dataset_cfg.get("encoder_length", 256)
     decoder_length = dataset_cfg.get("decoder_length", 15)
 
+    target_col = config.get("dataset", {}).get("target_col", "forward_return_15")
     dataset = _build_prediction_dataset(
-        prediction_df, encoder_length, decoder_length
+        prediction_df, encoder_length, decoder_length, target=target_col
     )
     dataloader = dataset.to_dataloader(train=False, batch_size=1, num_workers=0)
 
@@ -229,8 +229,12 @@ def predict():
         encoder_length = _config.get("dataset", {}).get("encoder_length", 256)
         needed_bars = encoder_length + 300 + 15  # extra margin for indicator warm-up
         pair = _config.get("data", {}).get("pair", "BTC_USDT").replace("_", "/").upper()
+        timeframe = _config.get("data", {}).get("timeframe", "1m")
+        # Map config timeframe format to ccxt format
+        tf_map = {"1m": "1m", "5min": "5m", "15min": "15m", "1h": "1h"}
+        ccxt_tf = tf_map.get(timeframe, timeframe)
 
-        raw_df = fetch_live_data(pair=pair, limit=needed_bars)
+        raw_df = fetch_live_data(pair=pair, timeframe=ccxt_tf, limit=needed_bars)
 
         # 2. Compute features
         feature_df = compute_prediction_features(raw_df, _config)

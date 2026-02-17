@@ -35,6 +35,8 @@ web/dist/
 # Training
 training.log
 models/
+!models/tft/best.ckpt
+!models/regime/hmm_4state.pkl
 
 # Video assets (large files)
 video-assets/

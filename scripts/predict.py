@@ -64,7 +64,7 @@ def parse_args():
     return parser.parse_args()
 
 
-def fetch_live_data(pair: str = "BTC/USDT", timeframe: str = "1m", limit: int = 500):
+def fetch_live_data(pair: str = "BTC/USDT", timeframe: str = "15m", limit: int = 500):
     """Fetch recent OHLCV data from Binance via CCXT.
 
     Args:
@@ -106,7 +106,16 @@ def compute_prediction_features(df: pd.DataFrame, config: dict) -> pd.DataFrame:
     # Import feature computation from the features module
     from src.features import compute_all_features
 
-    df = compute_all_features(df, config)
+    target_horizons = None
+    dataset_cfg = config.get("dataset", {})
+    target_col = dataset_cfg.get("target_col", "forward_return_15")
+    # Extract horizon number from target_col (e.g. "forward_return_1" -> [1])
+    if target_col:
+        import re
+        m = re.search(r"(\d+)$", target_col)
+        if m:
+            target_horizons = [int(m.group(1))]
+    df = compute_all_features(df, drop_na=True, target_horizons=target_horizons)
 
     # Drop NaN rows from indicator warm-up
     df = df.dropna().reset_index(drop=True)
@@ -146,8 +155,9 @@ def prepare_prediction_dataframe(
     df["group"] = "BTC_USDT"
 
     # For prediction, we need a target column (can be zeros for future steps)
-    if "forward_return_15" not in df.columns:
-        df["forward_return_15"] = 0.0
+    target_col = config.get("dataset", {}).get("target_col", "forward_return_15")
+    if target_col not in df.columns:
+        df[target_col] = 0.0
 
     return df
 
