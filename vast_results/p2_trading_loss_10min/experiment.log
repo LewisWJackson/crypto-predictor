@@ -1,0 +1,106 @@
+============================================
+  Single Experiment: p2_trading_loss_10min
+  Config: configs/experiments/p2_trading_loss_10min.yaml
+  Wed Feb 11 17:36:11 UTC 2026
+============================================
+NVIDIA GeForce RTX 3090, 24576 MiB
+Training...
+/opt/conda/lib/python3.10/site-packages/lightning/pytorch/utilities/parsing.py:213: Attribute 'loss' is an instance of `nn.Module` and is already saved during checkpointing. It is recommended to ignore them using `self.save_hyperparameters(ignore=['loss'])`.
+/opt/conda/lib/python3.10/site-packages/lightning/pytorch/utilities/parsing.py:213: Attribute 'logging_metrics' is an instance of `nn.Module` and is already saved during checkpointing. It is recommended to ignore them using `self.save_hyperparameters(ignore=['logging_metrics'])`.
+GPU available: True (cuda), used: True
+TPU available: False, using: 0 TPU cores
+💡 Tip: For seamless cloud logging and experiment tracking, try installing [litlogger](https://pypi.org/project/litlogger/) to enable LitLogger, which logs metrics and artifacts automatically to the Lightning Experiments platform.
+You are using a CUDA device ('NVIDIA GeForce RTX 3090') that has Tensor Cores. To properly utilize them, you should set `torch.set_float32_matmul_precision('medium' | 'high')` which will trade-off precision for performance. For more details, read https://pytorch.org/docs/stable/generated/torch.set_float32_matmul_precision.html#torch.set_float32_matmul_precision
+/opt/conda/lib/python3.10/site-packages/lightning/pytorch/callbacks/model_checkpoint.py:881: Checkpoint directory /app/models/tft exists and is not empty.
+LOCAL_RANK: 0 - CUDA_VISIBLE_DEVICES: [0]
+
+   | Name                               | Type                            | Params | Mode  | FLOPs
+--------------------------------------------------------------------------------------------------------
+0  | loss                               | CombinedTradingLoss             | 0      | train | 0    
+1  | logging_metrics                    | ModuleList                      | 0      | train | 0    
+2  | input_embeddings                   | MultiEmbedding                  | 1      | train | 0    
+3  | prescalers                         | ModuleDict                      | 2.9 K  | train | 0    
+4  | static_variable_selection          | VariableSelectionNetwork        | 7.0 K  | train | 0    
+5  | encoder_variable_selection         | VariableSelectionNetwork        | 366 K  | train | 0    
+6  | decoder_variable_selection         | VariableSelectionNetwork        | 49.3 K | train | 0    
+7  | static_context_variable_selection  | GatedResidualNetwork            | 16.8 K | train | 0    
+8  | static_context_initial_hidden_lstm | GatedResidualNetwork            | 16.8 K | train | 0    
+9  | static_context_initial_cell_lstm   | GatedResidualNetwork            | 16.8 K | train | 0    
+10 | static_context_enrichment          | GatedResidualNetwork            | 16.8 K | train | 0    
+11 | lstm_encoder                       | LSTM                            | 33.3 K | train | 0    
+12 | lstm_decoder                       | LSTM                            | 33.3 K | train | 0    
+13 | post_lstm_gate_encoder             | GatedLinearUnit                 | 8.3 K  | train | 0    
+14 | post_lstm_add_norm_encoder         | AddNorm                         | 128    | train | 0    
+15 | static_enrichment                  | GatedResidualNetwork            | 20.9 K | train | 0    
+16 | multihead_attn                     | InterpretableMultiHeadAttention | 10.4 K | train | 0    
+17 | post_attn_gate_norm                | GateAddNorm                     | 8.4 K  | train | 0    
+18 | pos_wise_ff                        | GatedResidualNetwork            | 16.8 K | train | 0    
+19 | pre_output_gate_norm               | GateAddNorm                     | 8.4 K  | train | 0    
+20 | output_layer                       | Linear                          | 455    | train | 0    
+--------------------------------------------------------------------------------------------------------
+629 K     Trainable params
+0         Non-trainable params
+629 K     Total params
+2.520     Total estimated model params size (MB)
+939       Modules in train mode
+0         Modules in eval mode
+0         Total Flops
+Loading config from: configs/experiments/p2_trading_loss_10min.yaml
+Creating datasets...
+  Filtered to data from 2022-01-01: 3,848,065 → 1,578,080 rows
+  Training samples:   1104391
+  Validation samples: 236447
+  Test samples:       235447
+Creating TFT model...
+  Model parameters: 629,926
+Starting training...
+Sanity Checking: |          | 0/? [00:00<?, ?it/s]/opt/conda/lib/python3.10/site-packages/lightning/pytorch/trainer/connectors/data_connector.py:434: The 'val_dataloader' does not have many workers which may be a bottleneck. Consider increasing the value of the `num_workers` argument` to `num_workers=63` in the `DataLoader` to improve performance.
+Sanity Checking: |          | 0/? [00:00<?, ?it/s]Sanity Checking DataLoader 0:   0%|          | 0/2 [00:00<?, ?it/s]Traceback (most recent call last):
+  File "/app/scripts/train_tft.py", line 221, in <module>
+    main()
+  File "/app/scripts/train_tft.py", line 152, in main
+    trainer.fit(
+  File "/opt/conda/lib/python3.10/site-packages/lightning/pytorch/trainer/trainer.py", line 584, in fit
+    call._call_and_handle_interrupt(
+  File "/opt/conda/lib/python3.10/site-packages/lightning/pytorch/trainer/call.py", line 49, in _call_and_handle_interrupt
+    return trainer_fn(*args, **kwargs)
+  File "/opt/conda/lib/python3.10/site-packages/lightning/pytorch/trainer/trainer.py", line 630, in _fit_impl
+    self._run(model, ckpt_path=ckpt_path, weights_only=weights_only)
+  File "/opt/conda/lib/python3.10/site-packages/lightning/pytorch/trainer/trainer.py", line 1079, in _run
+    results = self._run_stage()
+  File "/opt/conda/lib/python3.10/site-packages/lightning/pytorch/trainer/trainer.py", line 1121, in _run_stage
+    self._run_sanity_check()
+  File "/opt/conda/lib/python3.10/site-packages/lightning/pytorch/trainer/trainer.py", line 1150, in _run_sanity_check
+    val_loop.run()
+  File "/opt/conda/lib/python3.10/site-packages/lightning/pytorch/loops/utilities.py", line 179, in _decorator
+    return loop_run(self, *args, **kwargs)
+  File "/opt/conda/lib/python3.10/site-packages/lightning/pytorch/loops/evaluation_loop.py", line 146, in run
+    self._evaluation_step(batch, batch_idx, dataloader_idx, dataloader_iter)
+  File "/opt/conda/lib/python3.10/site-packages/lightning/pytorch/loops/evaluation_loop.py", line 441, in _evaluation_step
+    output = call._call_strategy_hook(trainer, hook_name, *step_args)
+  File "/opt/conda/lib/python3.10/site-packages/lightning/pytorch/trainer/call.py", line 329, in _call_strategy_hook
+    output = fn(*args, **kwargs)
+  File "/opt/conda/lib/python3.10/site-packages/lightning/pytorch/strategies/strategy.py", line 412, in validation_step
+    return self.lightning_module.validation_step(*args, **kwargs)
+  File "/opt/conda/lib/python3.10/site-packages/pytorch_forecasting/models/base/_base_model.py", line 741, in validation_step
+    log, out = self.step(x, y, batch_idx)
+  File "/opt/conda/lib/python3.10/site-packages/pytorch_forecasting/models/base/_base_model.py", line 954, in step
+    loss = self.loss(prediction, y)
+  File "/opt/conda/lib/python3.10/site-packages/torch/nn/modules/module.py", line 1511, in _wrapped_call_impl
+    return self._call_impl(*args, **kwargs)
+  File "/opt/conda/lib/python3.10/site-packages/torch/nn/modules/module.py", line 1520, in _call_impl
+    return forward_call(*args, **kwargs)
+  File "/opt/conda/lib/python3.10/site-packages/torchmetrics/metric.py", line 315, in forward
+    self._forward_cache = self._forward_reduce_state_update(*args, **kwargs)
+  File "/opt/conda/lib/python3.10/site-packages/torchmetrics/metric.py", line 384, in _forward_reduce_state_update
+    self.update(*args, **kwargs)
+  File "/opt/conda/lib/python3.10/site-packages/torchmetrics/metric.py", line 559, in wrapped_func
+    raise err
+  File "/opt/conda/lib/python3.10/site-packages/torchmetrics/metric.py", line 549, in wrapped_func
+    update(*args, **kwargs)
+  File "/opt/conda/lib/python3.10/site-packages/pytorch_forecasting/metrics/base_metrics/_base_metrics.py", line 887, in update
+    losses = self.loss(y_pred, target)
+  File "/app/src/loss.py", line 62, in loss
+    mse = (target - y_pred) ** 2
+RuntimeError: The size of tensor a (10) must match the size of tensor b (7) at non-singleton dimension 2
+                                                                   WARNING: No checkpoint found

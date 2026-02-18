@@ -14,14 +14,21 @@ Usage:
 """
 
 import argparse
+import os
 import sys
 from pathlib import Path
+
+# Force CPU — MPS runs out of memory on large batches
+os.environ["CUDA_VISIBLE_DEVICES"] = ""
+os.environ["PYTORCH_MPS_HIGH_WATERMARK_RATIO"] = "0.0"
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(PROJECT_ROOT))
 
 import numpy as np
 import torch
+# Disable MPS so Lightning doesn't auto-select it
+torch.backends.mps.is_available = lambda: False
 import matplotlib
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
@@ -223,7 +230,15 @@ def main():
     config = load_config(args.config)
 
     print(f"Loading TFT model from: {args.checkpoint}")
-    model = TemporalFusionTransformer.load_from_checkpoint(args.checkpoint)
+    # Patch torchmetrics to handle CUDA->CPU loading gracefully
+    import torchmetrics
+    _orig_apply = torchmetrics.Metric._apply
+    def _patched_apply(self, fn, *args, **kwargs):
+        self._device = torch.device("cpu")
+        return _orig_apply(self, fn, *args, **kwargs)
+    torchmetrics.Metric._apply = _patched_apply
+    model = TemporalFusionTransformer.load_from_checkpoint(args.checkpoint, map_location="cpu")
+    torchmetrics.Metric._apply = _orig_apply
     model.eval()
 
     # ------------------------------------------------------------------
@@ -271,8 +286,37 @@ def main():
     # ------------------------------------------------------------------
     print("Running TFT predictions on test set...")
     with torch.no_grad():
-        y_true, y_pred = run_predictions(model, test_dataloader)
+        # Get raw quantile outputs — mode="prediction" returns median which
+        # suffers from quantile crossing. Use mean of quantiles instead.
+        raw_preds = model.predict(test_dataloader, mode="raw", return_x=False)
+        pred_tensor = raw_preds["prediction"]  # (N, horizon, n_quantiles)
+        y_pred_all = pred_tensor.numpy() if hasattr(pred_tensor, "numpy") else np.array(pred_tensor)
+
+        # Quantiles: [0.02, 0.1, 0.25, 0.5, 0.75, 0.9, 0.98]
+        # Use q0.5 (index 3) as point prediction
+        y_pred = y_pred_all[:, :, 3]
+
+        # Collect actuals
+        actuals = []
+        for batch in test_dataloader:
+            x, y = batch
+            if isinstance(y, (tuple, list)):
+                actuals.append(y[0].numpy())
+            else:
+                actuals.append(y.numpy())
+        y_true = np.concatenate(actuals, axis=0)
+
+        # Align lengths
+        min_len = min(len(y_true), len(y_pred))
+        y_true = y_true[:min_len]
+        y_pred = y_pred[:min_len]
+        if y_true.ndim == 1:
+            y_true = y_true[:, np.newaxis]
+        if y_pred.ndim == 1:
+            y_pred = y_pred[:, np.newaxis]
+
     print(f"  Predictions shape: {y_pred.shape}")
+    print(f"  Pred final step: mean={y_pred[:,-1].mean():.6f}, std={y_pred[:,-1].std():.6f}, pct>0={100*(y_pred[:,-1]>0).mean():.1f}%")
 
     # ------------------------------------------------------------------
     # 4. Compute regime labels for test set
